@@ -17,22 +17,20 @@ class ResourceAllocatorCurrentDemand:
       __tol: tolerance for the constraints
     """
 
-    def __init__(self, k_dim: int, m_dim: int):
+    def __init__(self, cost: np.ndarray, k_dim: int, m_dim: int):
+
+        self.K = k_dim  # number of different areas
+        self.M = m_dim  # M-1 = maximum number of potential clients that can be predicted
+        self.cost = cost.copy()
+
         self.s = None
         self.d = None
         self.a = None
-        self.cost = None
-
-        self.s_tot = None
-        self.d_tot = None
 
         self.supplies = []
         self.demands = []
         self.actions = []
         self.costs_transport = []
-
-        self.K = k_dim  # number of different areas
-        self.M = m_dim  # M-1 = maximum number of potential clients that can be predicted
 
         self.__tol = 1e-3
         self.__max_attempts = 500
@@ -64,7 +62,9 @@ class ResourceAllocatorCurrentDemand:
         a = self._allocation_mat(x)
 
         # number of requests that cannot be covered because demand > supply
-        non_covered_requests = (self.d_tot - self.s_tot).clip(0)
+        d_tot = self.d.sum()
+        s_tot = self.s.sum()
+        non_covered_requests = (d_tot - s_tot).clip(0)
 
         return ((self.d - a @ self.s).clip(0)).sum() - non_covered_requests
 
@@ -99,7 +99,7 @@ class ResourceAllocatorCurrentDemand:
             tol=self.__tol)
 
         res.x *= params_scale
-        res.transportation_cost = self._costs_transport(res.x)
+        res.cost_transport = self._costs_transport(res.x)
 
         demand_constraint = self._demand_constraint(res.x)
 
@@ -108,18 +108,12 @@ class ResourceAllocatorCurrentDemand:
 
         return res
 
-    def resource_allocation(
-            self,
-            s: np.ndarray,
-            d: np.ndarray,
-            cost: np.ndarray
-    ):
+    def resource_allocation(self, s: np.ndarray, d: np.ndarray):
         """ Find action `a` such that the supply meets the demand and the
         vehicle transportation costs are minimized """
 
         self.s = s.copy()
         self.d = d.copy()
-        self.cost = cost.copy()
 
         # Create iterator that stops after min_success converged optimisations
         results = (self.optimize() for _ in range(self.__max_attempts))
@@ -143,4 +137,6 @@ class ResourceAllocatorCurrentDemand:
         self.supplies.append(self.s.copy())
         self.demands.append(self.d.copy())
         self.actions.append(self.a.copy())
-        self.costs_transport = [res.transportation_cost]
+        self.costs_transport.append(res.cost_transport)
+
+        return self.a.copy()

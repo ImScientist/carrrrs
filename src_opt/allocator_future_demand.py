@@ -8,6 +8,8 @@ class ResourceAllocatorFutureDemand:
 
     Attributes
     ----
+      K: number of different areas
+      M: M-1 = maximum number of potential clients that can be predicted
       d: predicted demand:
           d[k, m] = probability to receive m new pickup orders in area k
       s: idle supply;
@@ -27,13 +29,24 @@ class ResourceAllocatorFutureDemand:
       costs_tot:
     """
 
-    def __init__(self, k_dim: int, m_dim: int):
+    def __init__(
+            self,
+            access_mask: np.ndarray,
+            cost_transport: np.ndarray,
+            cost_waiting: np.ndarray,
+            k_dim: int,
+            m_dim: int
+    ):
+        self.K = k_dim  # number of different areas
+        self.M = m_dim  # M-1 = maximum number of potential clients that can be predicted
+
+        self.access_mask = access_mask.copy()
+        self.cost_transport = cost_transport.copy()
+        self.cost_waiting = cost_waiting.copy()
+
         self.s = None
         self.d = None
         self.a = None
-        self.access_mask = None
-        self.cost_transport = None
-        self.cost_waiting = None
 
         # record past problems and best actions
         self.supplies = []
@@ -42,9 +55,6 @@ class ResourceAllocatorFutureDemand:
         self.costs_transport = []
         self.costs_waiting = []
         self.costs_tot = []
-
-        self.K = k_dim  # number of different areas
-        self.M = m_dim  # M-1 = maximum number of potential clients that can be predicted
 
         self.__tol = 1e-3
         self.__max_attempts = 500
@@ -134,32 +144,24 @@ class ResourceAllocatorFutureDemand:
             tol=self.__tol)
 
         res.x *= params_scale
-        res.costs_tot = self._costs_tot(res.x)
-        res.costs_transport = self._costs_transport(res.x)
-        res.costs_waiting = self._costs_waiting(res.x)
+        res.cost_tot = self._costs_tot(res.x)
+        res.cost_transport = self._costs_transport(res.x)
+        res.cost_waiting = self._costs_waiting(res.x)
 
         return res
 
-    def resource_allocation(
-            self,
-            s: np.ndarray,
-            d: np.ndarray,
-            cost_transport: np.ndarray,
-            cost_waiting: np.ndarray
-    ):
+    def resource_allocation(self, s: np.ndarray, d: np.ndarray):
         """ Find action `a` such that the supply meets the predicted future
         demand such that there is a balance between the extra vehicle
         transportation costs and the decreased customer waiting time """
 
-        assert d.ndim == 2  # (K, M) with m-1 = max number of customers
-        assert s.ndim == 1  # (K,)
-        assert cost_transport.ndim == 2  # (K, M)
-        assert cost_waiting.ndim == 1  # (K,)
+        # assert d.ndim == 2  # (K, M) with m-1 = max number of customers
+        # assert s.ndim == 1  # (K,)
+        # assert cost_transport.ndim == 2  # (K, M)
+        # assert cost_waiting.ndim == 1  # (K,)
 
         self.s = s.copy()
         self.d = d.copy()
-        self.cost_transport = cost_transport.copy()
-        self.cost_waiting = cost_waiting.copy()
 
         # Create iterator that stops after min_success converged optimisations
         results = (self.optimize() for _ in range(self.__max_attempts))
@@ -184,6 +186,8 @@ class ResourceAllocatorFutureDemand:
         self.demands.append(self.d.copy())
         self.actions.append(self.a.copy())
 
-        self.costs_transport.append(res.costs_transport)
-        self.costs_waiting.append(res.costs_waiting)
-        self.costs_tot.append(res.costs_tot)
+        self.costs_transport.append(res.cost_transport)
+        self.costs_waiting.append(res.cost_waiting)
+        self.costs_tot.append(res.cost_tot)
+
+        return self.a.copy()
